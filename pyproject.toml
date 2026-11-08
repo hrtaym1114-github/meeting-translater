@@ -1,0 +1,21 @@
+[project]
+name = "meeting-translater"
+version = "0.1.0"
+description = "ローカル完結のリアルタイム文字起こし＋翻訳字幕（Apple Silicon / MLX）"
+requires-python = ">=3.12"
+dependencies = [
+    "haas-mlx @ git+https://github.com/matsuurajun/haas-mlx@cde96d263f56aad75c1de70282f71a91562092dd",
+    "mlx-lm",
+    "mlx-whisper",
+    "numba",
+    "numpy",
+    "pyqt6",
+    "sentencepiece",
+    "silero-vad",
+    "sounddevice",
+    "soundfile",
+    "transformers",
+]
+
+[tool.uv]
+package = false

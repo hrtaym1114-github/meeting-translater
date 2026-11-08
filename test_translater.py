@@ -1,0 +1,48 @@
+"""VAD 分割の自己チェック（モデル不要・数秒）: uv run python test_translater.py"""
+
+import numpy as np
+
+from translater import SR, Segmenter, load_audio
+
+
+def events(audio, **kw):
+    seg = Segmenter(**kw)
+    out = []
+    for i in range(0, len(audio), SR // 10):  # 実運用と同じ 0.1 秒刻みで投入
+        out += seg.feed(audio[i:i + SR // 10])
+    out += seg.feed(np.zeros(SR, np.float32))
+    if (rest := seg.flush()) is not None:
+        out.append(rest)
+    return out
+
+
+def finals(evs):
+    return [a for a, final in evs if final]
+
+
+for name in ("ja", "en"):
+    audio = load_audio(f"samples/{name}.wav")
+    evs = events(audio)
+    segs = finals(evs)
+    print(name, [round(len(s) / SR, 2) for s in segs], "partials:", sum(not f for _, f in evs))
+    assert len(segs) == 3, f"{name}: 3文 → 3区間のはず（{len(segs)}）"
+
+    # 途中経過: 確定前に出て、確定版の先頭部分と一致する（同じ発話の音声が伸びていくだけ）
+    pending = []
+    for a, final in evs:
+        if final:
+            assert pending, "4秒前後の発話なら確定前に途中経過が出るはず"
+            assert all(np.array_equal(a[:len(p)], p) for p in pending), "途中経過が確定版の先頭と一致しない"
+            pending = []
+        else:
+            pending.append(a)
+    assert not any(not f for _, f in events(audio, partial_sec=0)), "partial_sec=0 で途中経過が出た"
+
+    capped = finals(events(audio, max_sec=1.0))
+    assert len(capped) > 3, "max_sec で強制分割されるはず"
+    assert max(len(s) for s in capped) <= SR * 1.0 + 512, "区間長が max_sec を超えている"
+    # VAD の判定は同じなので、強制分割しても音声は1サンプルも欠けない
+    assert sum(map(len, capped)) == sum(map(len, segs))
+
+assert events(np.zeros(SR * 3, np.float32)) == [], "無音から区間が出てはいけない"
+print("OK")

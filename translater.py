@@ -13,6 +13,7 @@ MLX はスレッドを跨ぐとストリームエラーになるため、モデ�
 import argparse
 import collections
 import html
+import json
 import logging
 import os
 import queue
@@ -207,7 +208,7 @@ def vad_loop(args, audio_q, seg_q):
     seg_q.put(None)
 
 
-def worker(args, state, seg_q, res_q, ready):
+def worker(args, seg_q, res_q, ready):
     import mlx.core as mx
 
     stts = {}
@@ -227,7 +228,7 @@ def worker(args, state, seg_q, res_q, ready):
         mt("テスト", "ja", "en")
         mt.history.clear()
         log.info("翻訳 準備完了: %s（%.1f 秒）", args.mt_model, time.monotonic() - t)
-        stt_for(DIRS[state["dir"]][0])
+        stt_for(DIRS[args.direction][0])
     except Exception:
         log.exception("モデルの読み込みに失敗。初回は `HF_HUB_OFFLINE=0 uv run translater.py` でダウンロードしてください")
         os._exit(1)  # UI を待機表示のまま残さない
@@ -236,7 +237,7 @@ def worker(args, state, seg_q, res_q, ready):
     def process(audio, t_end, final):
         """STT → 翻訳して res_q へ (原文, 訳文, 確定か)。確定は空でも送る（UI の途中表示を消すため）。"""
         try:
-            src, tgt = DIRS[state["dir"]]
+            src, tgt = DIRS[args.direction]  # UI から実行中に切り替わる
             t0 = time.monotonic()
             text, lang = stt_for(src)(audio, src)
             t1 = time.monotonic()
@@ -280,12 +281,36 @@ def worker(args, state, seg_q, res_q, ready):
     res_q.put(None)
 
 
+# ---------- 設定・書き出し ----------
+
+SETTINGS = Path.home() / ".config" / "meeting-translater" / "settings.json"
+TRANSIENT = {"file", "no_ui", "list_devices"}  # 既定値として保存しないオプション
+
+
+def load_settings():
+    return json.loads(SETTINGS.read_text(encoding="utf-8")) if SETTINGS.exists() else {}
+
+
+def save_settings(**kw):
+    """既存の設定に kw を上書きして保存。"""
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS.write_text(json.dumps({**load_settings(), **kw}, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+
+
+def export_text(transcript):
+    """[(時刻, 原文, 訳文)] → 書き出し用テキスト。"""
+    return "".join(f"[{tm}] {s}\n{' ' * 11}{t}\n\n" for tm, s, t in transcript)
+
+
 # ---------- UI ----------
 
-def run_ui(args, state, res_q, ready):
+def run_ui(args, res_q, ready):
     from PyQt6 import QtCore, QtGui, QtWidgets
 
     Qt = QtCore.Qt
+    # スロット内の例外で PyQt がプロセスごと落とす（未書き出しの字幕が消える）のを防ぎ、ログに残して続行
+    sys.excepthook = lambda *e: log.error("UI の処理に失敗", exc_info=e)
 
     class Overlay(QtWidgets.QWidget):
         def __init__(self):
@@ -310,7 +335,8 @@ def run_ui(args, state, res_q, ready):
                 geo = QtGui.QGuiApplication.primaryScreen().availableGeometry()
                 w, h = min(1000, geo.width() - 40), 60 + args.lines * args.font_size * 3
                 self.setGeometry(geo.x() + (geo.width() - w) // 2, geo.bottom() - h - 40, w, h)
-            self.count = 0  # 確定した発話数
+            self.transcript = []  # 確定した発話 (時刻, 原文, 訳文)。書き出し用にクリア後も全件残す
+            self.shown = 0  # 表示中の先頭の発話（クリアでここまで進める）
             self.live = None  # 途中表示の先頭位置（QTextCursor）
             self.was_ready = False
             self.status()
@@ -343,28 +369,42 @@ def run_ui(args, state, res_q, ready):
                     cur.deletePreviousChar()  # 途中表示用に足した改行
             elif not s:
                 return
-            elif self.count == 0:
+            elif len(self.transcript) == self.shown:
                 self.text.clear()  # 待機メッセージを消す
                 cur = QtGui.QTextCursor(doc)
             else:
                 cur.insertBlock()
             if s:
-                fs = args.font_size
-                c1, c2 = ("#bbb", "#fff") if final else ("#777", "#aaa")
                 start = cur.position()
-                cur.insertHtml(
-                    f"<p style='margin:0;color:{c1};font-size:{fs * 0.7:.0f}px'>{html.escape(s)}</p>"
-                    f"<p style='margin:0 0 6px 0;color:{c2};font-size:{fs}px'>{html.escape(t)}</p>")
+                cur.insertHtml(self.fmt(s, t, final))
                 if final:
-                    self.count += 1
+                    self.transcript.append((time.strftime("%H:%M:%S"), s, t))
                     self.trim()
                 else:  # 挿入後に作る（挿入位置にあるカーソルは挿入分だけ後ろへずれるため）
                     self.live = QtGui.QTextCursor(doc)
                     self.live.setPosition(start)
-            if self.count == 0 and self.live is None:
-                self.status()
+            self.status()
             if follow:
                 sb.setValue(sb.maximum())
+
+        def fmt(self, s, t, final=True):
+            fs = args.font_size
+            c1, c2 = ("#bbb", "#fff") if final else ("#777", "#aaa")
+            return (f"<p style='margin:0;color:{c1};font-size:{fs * 0.7:.0f}px'>{html.escape(s)}</p>"
+                    f"<p style='margin:0 0 6px 0;color:{c2};font-size:{fs}px'>{html.escape(t)}</p>")
+
+        def rerender(self):
+            """表示中の字幕を今の設定で書き直す。途中表示は次の更新で出し直される。"""
+            self.live = None
+            self.text.clear()
+            cur = QtGui.QTextCursor(self.text.document())
+            for i, (_, s, t) in enumerate(self.transcript[self.shown:][-500:]):
+                if i:
+                    cur.insertBlock()
+                cur.insertHtml(self.fmt(s, t))
+            self.status()
+            sb = self.text.verticalScrollBar()
+            sb.setValue(sb.maximum())
 
         def trim(self):
             """古い発話から捨てる（1発話=2ブロック、最大 500 発話）。途中表示が無い時だけ呼ぶ。"""
@@ -375,16 +415,42 @@ def run_ui(args, state, res_q, ready):
                 c.removeSelectedText()
 
         def status(self):
-            if self.count or self.live is not None:
+            if len(self.transcript) > self.shown or self.live is not None:
                 return
-            msg = (f"待機中 — {DIR_LABELS[state['dir']]}（右クリックで設定 / ドラッグで移動 / ホイールで履歴）"
+            msg = (f"待機中 — {DIR_LABELS[args.direction]}（右クリックで設定 / ドラッグで移動 / ホイールで履歴）"
                    if ready.is_set() else "モデル読み込み中…")
             self.text.setHtml(f"<p style='color:#aaa;font-size:{args.font_size * 0.7:.0f}px'>{msg}</p>")
 
         def clear(self):
-            self.count = 0
+            self.shown = len(self.transcript)
             self.live = None
             self.status()
+
+        def apply(self, key, v):
+            """メニューでの設定変更。その場で反映し、次回起動の既定値としても保存する。"""
+            setattr(args, key, v)  # direction は MLX スレッドも参照する
+            save_settings(**{key: v})
+            self.rerender()  # 文字サイズ / 待機メッセージの言語方向
+            self.update()  # 背景の不透明度
+
+        def export(self):
+            default = Path.home() / "Downloads" / f"meeting-{time.strftime('%Y%m%d-%H%M')}.txt"
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "字幕を書き出し", str(default),
+                                                            "テキスト (*.txt)")
+            if not path:
+                return
+            try:
+                Path(path).write_text(export_text(self.transcript), encoding="utf-8")
+            except OSError as e:
+                QtWidgets.QMessageBox.warning(self, "書き出しに失敗", str(e))
+                return
+            log.info("書き出し: %s（%d 発話）", path, len(self.transcript))
+
+        def open_settings(self):
+            # 編集しやすいよう、未設定の項目も今の値で埋めてから開く
+            cur = {k: v for k, v in vars(args).items() if k not in TRANSIENT}
+            save_settings(**{**cur, **load_settings()})
+            subprocess.run(["open", "-t", str(SETTINGS)])
 
         def eventFilter(self, obj, e):
             t = e.type()
@@ -409,12 +475,23 @@ def run_ui(args, state, res_q, ready):
 
         def contextMenuEvent(self, e):
             m = QtWidgets.QMenu(self)
-            for d, label in DIR_LABELS.items():
-                a = m.addAction(label)
-                a.setCheckable(True)
-                a.setChecked(d == state["dir"])
-                a.triggered.connect(lambda _, d=d: (state.update(dir=d), self.status()))
+
+            def pick(menu, key, items):
+                for v, label in items:
+                    a = menu.addAction(label)
+                    a.setCheckable(True)
+                    a.setChecked(v == getattr(args, key))
+                    a.triggered.connect(lambda _, v=v: self.apply(key, v))
+
+            pick(m, "direction", DIR_LABELS.items())
             m.addSeparator()
+            pick(m.addMenu("文字サイズ"), "font_size",
+                 [(v, f"{v}px") for v in sorted({18, 22, 26, 32, 40, args.font_size})])
+            pick(m.addMenu("背景の不透明度"), "opacity",
+                 [(v, f"{v:.0%}") for v in sorted({0.4, 0.6, 0.8, 1.0, args.opacity})])
+            m.addAction("設定ファイルを開く（次回起動から反映）", self.open_settings)
+            m.addSeparator()
+            m.addAction("書き出し…", self.export).setEnabled(bool(self.transcript))
             m.addAction("字幕をクリア", self.clear)
             m.addAction("終了", QtWidgets.QApplication.quit)
             m.exec(e.globalPos())
@@ -430,8 +507,10 @@ def run_ui(args, state, res_q, ready):
 
 # ---------- main ----------
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def parse_args(argv=None):
+    """既定値 < 設定ファイル < コマンドライン の順で優先。"""
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                epilog=f"既定値は {SETTINGS} で変更できる（右クリック > 設定ファイルを開く）")
     p.add_argument("--device", help="入力デバイス名の一部 or 番号（例: BlackHole）。省略で既定マイク")
     p.add_argument("--file", help="マイクの代わりに音声/動画ファイルを実時間で流す（検証用）")
     p.add_argument("--direction", choices=DIRS, default="ja-en")
@@ -448,8 +527,17 @@ def main():
     p.add_argument("--lines", type=int, default=3, help="字幕ウィンドウの初期の高さ（発話数）")
     p.add_argument("--opacity", type=float, default=0.8, help="字幕背景の不透明度 0〜1")
     p.add_argument("--list-devices", action="store_true")
-    args = p.parse_args()
+    try:
+        saved = load_settings()
+    except ValueError as e:
+        p.error(f"設定ファイル {SETTINGS} を読めません: {e}")
+    # 設定を先頭の引数として渡す（後に書いたコマンドラインが勝つ。型変換と choices の検査も argparse に任せる）
+    cfg = [f"--{k.replace('_', '-')}={v}" for k, v in saved.items() if v is not None and k not in TRANSIENT]
+    return p.parse_args(cfg + (sys.argv[1:] if argv is None else argv))
 
+
+def main():
+    args = parse_args()
     if args.list_devices:
         import sounddevice as sd
 
@@ -457,18 +545,17 @@ def main():
         return
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 
-    state = {"dir": args.direction}
     audio_q, seg_q, res_q = queue.Queue(), queue.Queue(), queue.Queue()
     ready = threading.Event()
     threading.Thread(target=capture, args=(args, audio_q, ready), daemon=True).start()
     threading.Thread(target=vad_loop, args=(args, audio_q, seg_q), daemon=True).start()
-    w = threading.Thread(target=worker, args=(args, state, seg_q, res_q, ready), daemon=True)
+    w = threading.Thread(target=worker, args=(args, seg_q, res_q, ready), daemon=True)
     w.start()
     try:
         if args.no_ui:
             w.join()
         else:
-            run_ui(args, state, res_q, ready)
+            run_ui(args, res_q, ready)
     except KeyboardInterrupt:
         pass
     # macOS の ru_maxrss はバイト単位

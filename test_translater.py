@@ -1,8 +1,23 @@
-"""VAD 分割の自己チェック（モデル不要・数秒）: uv run python test_translater.py"""
+"""VAD 分割・設定・書き出しの自己チェック（モデル不要・数秒）: uv run python test_translater.py"""
+
+import tempfile
+from pathlib import Path
 
 import numpy as np
 
-from translater import SR, Segmenter, load_audio
+import translater
+from translater import SR, Segmenter, export_text, load_audio
+
+# 設定: 既定値 < 設定ファイル < コマンドライン。保存は追記。一時的なオプションは既定値にしない
+with tempfile.TemporaryDirectory() as d:
+    translater.SETTINGS = Path(d) / "sub" / "settings.json"
+    assert translater.parse_args([]).font_size == 26, "設定ファイルが無ければ既定値"
+    translater.save_settings(font_size=30, direction="en-ja", file="a.wav", device=None)
+    translater.save_settings(opacity=0.5)
+    a = translater.parse_args(["--direction", "auto"])
+    assert (a.font_size, a.opacity, a.direction, a.file, a.device) == (30, 0.5, "auto", None, None), vars(a)
+
+assert export_text([("10:00:00", "こんにちは", "Hello")]) == "[10:00:00] こんにちは\n           Hello\n\n"
 
 
 def events(audio, **kw):

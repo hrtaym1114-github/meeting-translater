@@ -12,6 +12,35 @@
 
 スレッド構成: キャプチャ → VAD → MLX（STT + 翻訳）→ UI。MLX はスレッドを跨げないため、モデルのロードと推論は MLX スレッドで完結させている。
 
+## Macアプリで使う
+
+インストール済みなら、Finder のホームフォルダ内の「アプリケーション」にある
+**Meeting Translater.app** をダブルクリックする。Dock に追加してもよい。
+
+1. 初回は「初回準備・モデルを取得」を押す（約3.6GB。取得済みなら省略可能）。
+2. 翻訳方向と音声入力を選ぶ。自分の声は「Macの既定のマイク」、会議や動画の再生音は「BlackHole 2ch」。
+3. 「翻訳を開始」を押す。字幕ウィンドウが開き、モデルの読み込みが終わると音声に合わせて原文と訳文が表示される。
+4. 「停止」で翻訳を止める。設定画面を閉じた場合も翻訳処理は終了する。
+
+翻訳方向・音声入力・文字サイズは次回も引き継ぐ。
+BlackHole を使う場合は、下記「システム音声の取り込み」の複数出力装置の設定も必要。
+マイクの権限を求められたら許可する。音声認識・翻訳はローカルで行い、モデル取得時のみインターネットに接続する。
+
+アプリを作成・再インストールするには、このプロジェクトで次を実行する。
+
+```sh
+uv sync
+uv run python scripts/build_macos_app.py --install
+```
+
+作成先は `dist/Meeting Translater.app`、インストール先は `~/Applications/Meeting Translater.app`。
+ビルドには Xcode Command Line Tools（`swiftc`）が必要。
+これはこのMac向けの起動アプリであり、実体はこのプロジェクトと `.venv` にある。
+プロジェクトを移動した場合は移動先で再作成する。他のMacに `.app` だけをコピーしても動作しない。
+アプリ起動時の診断ログは `~/Library/Logs/Meeting Translater/app.log` に保存する。
+
+設定画面だけを起動する場合は `uv run python desktop.py`。
+
 ## 動作環境
 
 - Apple Silicon Mac / macOS
@@ -109,9 +138,11 @@ uv run translater.py --list-devices                    # 入力デバイス一�
 
 ```sh
 uv run python test_translater.py
+QT_QPA_PLATFORM=offscreen uv run python -m unittest test_desktop.py
 ```
 
 VAD 分割の自己チェック（モデル不要・数秒。`samples/` と ffmpeg を使用）。
+アプリ版のテストは開始・状態通知・停止・異常終了後の再開を、実際の子プロセスで確認する。
 
 ## 使用モデルとメモリ使用量
 

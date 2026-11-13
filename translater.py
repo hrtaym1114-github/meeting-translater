@@ -13,6 +13,7 @@ MLX はスレッドを跨ぐとストリームエラーになるため、モデ�
 import argparse
 import collections
 import html
+import json
 import logging
 import os
 import queue
@@ -37,6 +38,12 @@ DIRS = {"ja-en": ("ja", "en"), "en-ja": ("en", "ja"), "auto": (None, None)}
 DIR_LABELS = {"ja-en": "日本語 → 英語", "en-ja": "英語 → 日本語", "auto": "自動検出（ja⇄en）"}
 
 log = logging.getLogger("translater")
+
+
+def report_event(event, **fields):
+    """アプリ版の親プロセスへ状態を通知。通常のCLI実行では出力しない。"""
+    if os.environ.get("MEETING_TRANSLATER_EVENTS") == "1":
+        print("MEETING_EVENT " + json.dumps({"event": event, **fields}, ensure_ascii=False), flush=True)
 
 
 # ---------- STT（差し替えはここに1クラス足して STT に登録） ----------
@@ -180,6 +187,7 @@ def capture(args, audio_q, ready):
     if args.file:
         audio = load_audio(args.file)
         log.info("ファイル再生: %s（%.1f 秒）", args.file, len(audio) / SR)
+        report_event("ready", device=Path(args.file).name)
         for i in range(0, len(audio), SR // 10):
             audio_q.put(audio[i:i + SR // 10])
             time.sleep(0.1)
@@ -194,6 +202,7 @@ def capture(args, audio_q, ready):
                         device=dev, blocksize=SR // 10,
                         callback=lambda d, *_: audio_q.put(d.mean(axis=1))):
         log.info("録音開始: %s", info["name"])
+        report_event("ready", device=info["name"])
         threading.Event().wait()
 
 
@@ -215,6 +224,7 @@ def worker(args, state, seg_q, res_q, ready):
     def stt_for(src):
         name = args.stt or ("haas" if src == "ja" else "whisper")
         if name not in stts:
+            report_event("loading", message="音声認識モデルを読み込んでいます…")
             t = time.monotonic()
             stts[name] = STT[name](args)
             stts[name](np.zeros(SR, np.float32), src)  # ウォームアップ（初回の kernel コンパイル）
@@ -222,6 +232,7 @@ def worker(args, state, seg_q, res_q, ready):
         return stts[name]
 
     try:
+        report_event("loading", message="翻訳モデルを読み込んでいます…")
         t = time.monotonic()
         mt = Translator(args.mt_model, args.history)
         mt("テスト", "ja", "en")
@@ -230,6 +241,7 @@ def worker(args, state, seg_q, res_q, ready):
         stt_for(DIRS[state["dir"]][0])
     except Exception:
         log.exception("モデルの読み込みに失敗。初回は `HF_HUB_OFFLINE=0 uv run translater.py` でダウンロードしてください")
+        report_event("error", message="モデルを読み込めませんでした。初回準備でモデルを取得してください。")
         os._exit(1)  # UI を待機表示のまま残さない
     ready.set()
 
@@ -420,6 +432,11 @@ def run_ui(args, state, res_q, ready):
             m.exec(e.globalPos())
 
     app = QtWidgets.QApplication(sys.argv)
+    app.setApplicationName("Meeting Translater")
+    app.setApplicationDisplayName("Meeting Translater — 字幕")
+    bundle = os.environ.get("MEETING_TRANSLATER_APP_BUNDLE")
+    if bundle:
+        app.setWindowIcon(QtGui.QIcon(str(Path(bundle) / "Contents/Resources/AppIcon.icns")))
     # Ctrl+C でも位置を保存して終了（poll タイマーが Python に制御を戻すのでハンドラが動く）
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     ov = Overlay()
@@ -456,6 +473,13 @@ def main():
         print(sd.query_devices())
         return
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
+
+    def thread_error(args):
+        log.error("音声処理を停止しました", exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+        report_event("error", message=f"音声処理を開始・継続できませんでした: {args.exc_value}")
+        os._exit(1)
+
+    threading.excepthook = thread_error
 
     state = {"dir": args.direction}
     audio_q, seg_q, res_q = queue.Queue(), queue.Queue(), queue.Queue()

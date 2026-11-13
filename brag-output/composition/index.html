@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ja" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "JP"; src: local("Hiragino Sans"), local("HiraginoSans-W3"), local("Hiragino Kaku Gothic ProN"); font-weight: 100 900; }
+      :root {
+        --ground: #0b0d12;
+        --panel: #151a25;
+        --line: #262c3a;
+        --ink: #ffffff;
+        --ink-2: #bbbbbb;
+        --muted: #9aa1b2;
+        --accent: #5ee6c4;
+        --font-display: "JP", sans-serif;
+        --font-mono: "SF Mono", Menlo, monospace;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 1920px; height: 1080px; font-family: var(--font-display); color: var(--ink); }
+      .scene { position: absolute; inset: 0; }
+      .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      #glow { position: absolute; left: 460px; top: 140px; width: 1000px; height: 800px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(94,230,196,0.2), rgba(94,230,196,0)); opacity: 0.5; }
+
+      /* S1 */
+      #q { font-size: 88px; font-weight: 600; line-height: 1.3; letter-spacing: 0.02em; }
+      #ans { position: absolute; font-size: 132px; font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
+
+      /* shared: scene header */
+      .hdr { position: absolute; left: 120px; top: 64px; display: flex; align-items: center; gap: 28px; }
+      .hdr h2 { font-size: 68px; font-weight: 700; letter-spacing: 0.02em; }
+      .chip { font-family: var(--font-mono); font-size: 26px; padding: 10px 22px; border: 2px solid var(--line); border-radius: 999px; color: var(--ink-2); background: var(--panel); white-space: nowrap; }
+      .chip.on { color: var(--accent); border-color: var(--accent); }
+
+      /* shared: floating subtitle window (the app) */
+      .sub { position: absolute; border-radius: 24px; background: rgba(0,0,0,0.88); border: 2px solid rgba(94,230,196,0.55); box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+      .sub .tag { position: absolute; left: 32px; top: -24px; font-size: 24px; font-weight: 700; padding: 6px 18px; border-radius: 999px; background: var(--accent); color: #0b0d12; }
+      .pair { position: absolute; left: 56px; right: 56px; top: 46px; }
+      .src { font-size: 34px; line-height: 1.4; color: #777777; }
+      .tr { font-size: 52px; font-weight: 600; line-height: 1.3; margin-top: 8px; color: #aaaaaa; }
+
+      /* person silhouette */
+      .avatar { display: block; border-radius: 50%; background: #1d2332; border: 5px solid transparent; }
+
+      /* S2: meeting */
+      #call { position: absolute; left: 360px; top: 200px; width: 1200px; height: 540px; border-radius: 20px; background: var(--panel); border: 2px solid var(--line); overflow: hidden; }
+      .tb { height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 20px; background: #1b2130; }
+      .tb b { width: 14px; height: 14px; border-radius: 50%; }
+      .tb span { flex: 1; text-align: center; font-size: 22px; color: var(--muted); margin-right: 64px; }
+      #spk { position: absolute; left: 515px; top: 110px; width: 170px; height: 170px; }
+      #bars { position: absolute; left: 715px; top: 165px; display: flex; gap: 8px; align-items: center; height: 60px; }
+      #bars i { display: block; width: 10px; height: 60px; border-radius: 5px; background: var(--accent); transform-origin: 50% 50%; }
+      #sub2 { left: 260px; top: 650px; width: 1400px; height: 236px; }
+
+      /* S3: conversation */
+      .person { position: absolute; top: 420px; width: 240px; text-align: center; }
+      .person .avatar { width: 170px; height: 170px; margin: 0 auto; }
+      .person p { font-size: 28px; color: var(--ink-2); margin-top: 20px; }
+      #pA { left: 50px; }
+      #pB { left: 1630px; }
+      #sub3 { left: 320px; top: 410px; width: 1280px; height: 250px; }
+
+      /* S4 */
+      #icon { width: 190px; height: 190px; margin-bottom: 36px; }
+      #h4 { font-size: 92px; font-weight: 700; letter-spacing: 0.02em; }
+      #chips4 { display: flex; gap: 24px; margin-top: 52px; }
+      #chips4 .chip { font-size: 36px; padding: 16px 34px; }
+
+      /* S5 */
+      #mark { font-size: 132px; font-weight: 700; letter-spacing: 0.01em; }
+      #tag5 { font-size: 46px; margin-top: 36px; color: var(--ink-2); letter-spacing: 0.04em; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="24.9" data-width="1920" data-height="1080">
+      <div id="glow" class="clip" data-start="0" data-duration="24.9" data-track-index="0"></div>
+
+      <!-- Scene 1: hook -->
+      <div id="s1" class="clip scene" data-start="0" data-duration="3.82" data-track-index="1">
+        <div class="center">
+          <p id="q">その会話、<br />どこに送られてる？</p>
+          <p id="ans">クラウド送信なし</p>
+        </div>
+      </div>
+
+      <!-- Scene 2: online meeting -->
+      <div id="s2" class="clip scene" data-start="3.82" data-duration="7.11" data-track-index="1">
+        <div class="hdr" id="hdr2"><h2>オンライン会議で</h2><span class="chip on">入力: BlackHole 2ch（会議の音声）</span></div>
+        <div id="call">
+          <div class="tb"><b style="background:#ff5f57"></b><b style="background:#febc2e"></b><b style="background:#28c840"></b><span>オンライン会議</span></div>
+          <svg id="spk" class="avatar" viewBox="0 0 100 100"><circle cx="50" cy="38" r="16" fill="#3a4256" /><path d="M20 84 a30 26 0 0 1 60 0z" fill="#3a4256" /></svg>
+          <div id="bars"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="sub" id="sub2">
+          <span class="tag">Meeting Translater の字幕</span>
+          <div class="pair"><p class="src">Can we move the release to next Friday?</p><p class="tr">リリースを来週の金曜に移せますか？</p></div>
+          <div class="pair"><p class="src">I'll send the updated slides after this call.</p><p class="tr">この通話のあとで、更新したスライドを送ります。</p></div>
+        </div>
+      </div>
+
+      <!-- Scene 3: face-to-face conversation -->
+      <div id="s3" class="clip scene" data-start="10.93" data-duration="6.54" data-track-index="1">
+        <div class="hdr" id="hdr3"><h2>対面の会話でも</h2><span class="chip on">入力: Macのマイク</span><span class="chip">日本語⇄英語を自動検出</span></div>
+        <div class="person" id="pA">
+          <svg class="avatar" viewBox="0 0 100 100"><circle cx="50" cy="38" r="16" fill="#3a4256" /><path d="M20 84 a30 26 0 0 1 60 0z" fill="#3a4256" /></svg>
+          <p>あなた（日本語）</p>
+        </div>
+        <div class="person" id="pB">
+          <svg class="avatar" viewBox="0 0 100 100"><circle cx="50" cy="38" r="16" fill="#3a4256" /><path d="M20 84 a30 26 0 0 1 60 0z" fill="#3a4256" /></svg>
+          <p>相手（English）</p>
+        </div>
+        <div class="sub" id="sub3">
+          <span class="tag">Meeting Translater の字幕</span>
+          <div class="pair"><p class="src">このあたりで、おすすめのお店はありますか？</p><p class="tr">Any restaurant you'd recommend nearby?</p></div>
+          <div class="pair"><p class="src">There's a great ramen shop nearby.</p><p class="tr">近くに、おいしいラーメン屋がありますよ。</p></div>
+        </div>
+      </div>
+
+      <!-- Scene 4: local -->
+      <div id="s4" class="clip scene" data-start="17.47" data-duration="4.37" data-track-index="1">
+        <div class="center">
+          <svg id="icon" viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-width="6">
+            <path class="arc" d="M14 40 Q50 8 86 40" stroke="#8b93a7" pathLength="1" />
+            <path class="arc" d="M27 54 Q50 34 73 54" stroke="#8b93a7" pathLength="1" />
+            <path class="arc" d="M40 68 Q50 60 60 68" stroke="#8b93a7" pathLength="1" />
+            <circle cx="50" cy="80" r="4" fill="#8b93a7" stroke="none" />
+            <path id="slash" d="M16 12 L84 88" stroke="#5ee6c4" pathLength="1" />
+          </svg>
+          <p id="h4">ローカルで文字起こし、翻訳</p>
+          <div id="chips4"><span class="chip on">クラウド送信なし</span><span class="chip">Apple Silicon / MLX</span></div>
+        </div>
+      </div>
+
+      <!-- Scene 5: outro -->
+      <div id="s5" class="clip scene" data-start="21.84" data-duration="3.06" data-track-index="1">
+        <div class="center">
+          <p id="mark">Meeting Translater</p>
+          <p id="tag5">会議も会話も、ローカルでリアルタイムに翻訳。</p>
+        </div>
+      </div>
+
+      <audio id="bgm" data-start="0" data-duration="24.9" data-track-index="10" data-volume="0.3" src="assets/music/bed-short.mp3"></audio>
+      <audio id="sfx-ans" data-start="2.38" data-duration="0.12" data-track-index="11" data-volume="0.6" src="assets/sfx/impactSoft_medium_000.ogg"></audio>
+      <audio id="sfx-p1" data-start="4.5" data-duration="0.11" data-track-index="12" data-volume="0.5" src="assets/sfx/drop_001.ogg"></audio>
+      <audio id="sfx-p2" data-start="7.64" data-duration="0.11" data-track-index="13" data-volume="0.5" src="assets/sfx/drop_001.ogg"></audio>
+      <audio id="sfx-p3" data-start="11.75" data-duration="0.11" data-track-index="14" data-volume="0.5" src="assets/sfx/drop_001.ogg"></audio>
+      <audio id="sfx-p4" data-start="14.5" data-duration="0.11" data-track-index="15" data-volume="0.5" src="assets/sfx/drop_001.ogg"></audio>
+      <audio id="sfx-slash" data-start="18.06" data-duration="0.1" data-track-index="16" data-volume="0.55" src="assets/sfx/click_003.ogg"></audio>
+      <audio id="sfx-mark" data-start="21.86" data-duration="0.12" data-track-index="17" data-volume="0.45" src="assets/sfx/impactSoft_medium_000.ogg"></audio>
+    </div>
+
+    <script>
+      const RMS = [0.36, 0.403, 0.384, 0.405, 0.354, 0.296, 0.277, 0.192, 0.252, 0.218, 0.175, 0.097, 0.281, 0.247, 0.126, 0.079, 0.373, 0.303, 0.262, 0.211, 0.162, 0.081, 0.04, 0.033, 0.163, 0.231, 0.136, 0.118, 0.167, 0.32, 0.246, 0.219, 0.191, 0.111, 0.065, 0.053, 0.049, 0.362, 0.268, 0.223, 0.197, 0.145, 0.085, 0.068, 0.08, 0.313, 0.289, 0.266, 0.273, 0.371, 0.316, 0.248, 0.25, 0.249, 0.229, 0.218, 0.077, 0.199, 0.282, 0.25, 0.22, 0.189, 0.145, 0.077, 0.106, 0.278, 0.276, 0.205, 0.198, 0.167, 0.346, 0.25, 0.219, 0.244, 0.276, 0.246, 0.163, 0.11, 0.316, 0.207, 0.161, 0.187, 0.376, 0.32, 0.259, 0.198, 0.083, 0.082, 0.062, 0.047, 0.361, 0.408, 0.352, 0.294, 0.318, 0.255, 0.222, 0.21, 0.148, 0.076, 0.038, 0.037, 0.198, 0.31, 0.272, 0.236, 0.192, 0.13, 0.087, 0.068, 0.124, 0.371, 0.279, 0.218, 0.264, 0.334, 0.269, 0.228, 0.235, 0.229, 0.246, 0.21, 0.072, 0.322, 0.29, 0.242, 0.209, 0.163, 0.142, 0.133, 0.108, 0.351, 0.399, 0.394, 0.364, 0.401, 0.321, 0.28, 0.226, 0.218, 0.237, 0.189, 0.114, 0.204, 0.261, 0.134, 0.08, 0.339, 0.34, 0.311, 0.314, 0.234, 0.099, 0.05, 0.031, 0.032, 0.266, 0.144, 0.121, 0.112, 0.346, 0.248, 0.229, 0.198, 0.129, 0.07, 0.056, 0.046, 0.325, 0.27, 0.223, 0.19, 0.144, 0.084, 0.064, 0.079, 0.286, 0.295, 0.273, 0.273, 0.358, 0.306, 0.268, 0.24, 0.231, 0.231, 0.213, 0.126, 0.063, 0.325, 0.254, 0.231, 0.205, 0.14, 0.082, 0.088, 0.177, 0.331, 0.215, 0.19, 0.161, 0.34, 0.265, 0.241, 0.196, 0.307, 0.259, 0.196, 0.073, 0.308, 0.229, 0.173, 0.108, 0.367, 0.321, 0.283, 0.223, 0.091, 0.078, 0.067, 0.046, 0.287, 0.429, 0.369, 0.313, 0.314, 0.293, 0.224, 0.206, 0.164, 0.083, 0.039, 0.033, 0.051, 0.33, 0.265, 0.242, 0.198, 0.136, 0.093, 0.072, 0.07, 0.37, 0.305, 0.259, 0.217, 0.343, 0.273, 0.236, 0.236, 0.241, 0.235, 0.23, 0.114, 0.287, 0.295, 0.253, 0.209, 0.174, 0.157, 0.126, 0.114, 0.628, 0.737, 0.601, 0.412, 0.337, 0.369, 0.415, 0.365, 0.336, 0.312, 0.284, 0.278, 0.286, 0.364, 0.315, 0.287, 0.406, 0.725, 0.639, 0.497, 0.284, 0.248, 0.235, 0.239, 0.237, 0.342, 0.27, 0.229, 0.227, 0.353, 0.321, 0.316, 0.309, 0.683, 0.714, 0.549, 0.294, 0.327, 0.421, 0.399, 0.353, 0.293, 0.268, 0.275, 0.252, 0.314, 0.373, 0.339, 0.346, 0.514, 0.62, 0.654, 0.444, 0.298, 0.289, 0.294, 0.238, 0.187, 0.418, 0.403, 0.379, 0.412, 0.345, 0.354, 0.384, 0.328, 0.735, 0.736, 0.492, 0.324, 0.356, 0.366, 0.347, 0.334, 0.331, 0.332, 0.327, 0.255, 0.349, 0.321, 0.302, 0.276, 0.519, 0.675, 0.578, 0.431, 0.215, 0.227, 0.227, 0.205, 0.189, 0.491, 0.45, 0.422, 0.352, 0.411, 0.368, 0.356, 0.38, 0.757, 0.644, 0.521, 0.241, 0.366, 0.379, 0.345, 0.309, 0.293, 0.288, 0.289, 0.283, 0.352, 0.394, 0.315, 0.286, 0.647, 0.695, 0.572, 0.351, 0.301, 0.329, 0.324, 0.25, 0.307, 0.347, 0.34, 0.321, 0.297, 0.294, 0.294, 0.275, 0.476, 0.721, 0.676, 0.47, 0.342, 0.38, 0.38, 0.372, 0.328, 0.346, 0.28, 0.285, 0.29, 0.352, 0.31, 0.288, 0.29, 0.701, 0.707, 0.508, 0.334, 0.258, 0.231, 0.253, 0.239, 0.284, 0.288, 0.243, 0.244, 0.313, 0.338, 0.319, 0.303, 0.58, 0.779, 0.537, 0.384, 0.267, 0.34, 0.299, 0.295, 0.268, 0.241, 0.24, 0.234, 0.242, 0.383, 0.331, 0.328, 0.42, 0.663, 0.664, 0.515, 0.304, 0.294, 0.312, 0.301, 0.29, 0.34, 0.355, 0.418, 0.391, 0.38, 0.395, 0.45, 0.398, 0.659, 0.734, 0.618, 0.345, 0.347, 0.401, 0.372, 0.359, 0.371, 0.348, 0.322, 0.292, 0.31, 0.351, 0.302, 0.279, 0.43, 0.722, 0.665, 0.475, 0.309, 0.25, 0.249, 0.252, 0.285, 0.511, 0.517, 0.512, 0.454, 0.439, 0.392, 0.383, 0.371, 0.727, 0.688, 0.478, 0.331, 0.376, 0.394, 0.407, 0.412, 0.433, 0.342, 0.315, 0.288, 0.417, 0.435, 0.394, 0.243, 0.488, 0.51, 0.513, 0.508, 0.481, 0.318, 0.258, 0.263, 0.267, 0.333, 0.309, 0.289, 0.269, 0.299, 0.244, 0.252, 0.226, 0.859, 0.79, 0.579, 0.594, 0.625, 0.602, 0.479, 0.196, 0.17, 0.156, 0.173, 0.146, 0.302, 0.222, 0.154, 0.158, 0.682, 0.807, 0.588, 0.39, 0.24, 0.243, 0.193, 0.059, 0.16, 0.178, 0.159, 0.126, 0.196, 0.42, 0.347, 0.321, 0.322, 0.851, 0.739, 0.4, 0.199, 0.274, 0.256, 0.253, 0.222, 0.445, 0.455, 0.447, 0.464, 0.432, 0.452, 0.449, 0.432, 0.845, 0.757, 0.51, 0.315, 0.233, 0.339, 0.331, 0.328, 0.492, 0.525, 0.561, 0.586, 0.419, 0.515, 0.525, 0.501, 0.599, 0.804, 0.673, 0.432, 0.4, 0.427, 0.448, 0.487, 0.471, 0.375, 0.263, 0.239, 0.182, 0.206, 0.208, 0.199, 0.244, 1.0, 0.78, 0.489, 0.352, 0.31, 0.277, 0.055, 0.052, 0.49, 0.581, 0.472, 0.537, 0.49, 0.577, 0.503, 0.576, 0.727, 0.799, 0.591, 0.452, 0.419, 0.392, 0.239, 0.205, 0.361, 0.589, 0.513, 0.479, 0.503, 0.447, 0.53, 0.446, 0.516, 0.787, 0.695, 0.44, 0.346, 0.483, 0.436, 0.502, 0.431, 0.496, 0.537, 0.541, 0.508, 0.481, 0.532, 0.498, 0.538, 0.741, 0.73, 0.583, 0.476, 0.444, 0.509, 0.471, 0.488, 0.421, 0.238, 0.143, 0.091, 0.245, 0.234, 0.18, 0.157, 0.556, 0.847, 0.63, 0.391, 0.205, 0.19, 0.195, 0.13, 0.131, 0.2, 0.169, 0.146, 0.136, 0.358, 0.302, 0.28, 0.285, 0.786, 0.795, 0.427, 0.249, 0.253, 0.22, 0.216, 0.203, 0.457, 0.504, 0.476, 0.472, 0.456, 0.453, 0.447, 0.403, 0.691, 0.736, 0.584, 0.329, 0.195, 0.329, 0.334, 0.307, 0.424, 0.518, 0.528, 0.459, 0.459, 0.401, 0.378, 0.37, 0.359, 0.6, 0.548, 0.283, 0.257, 0.249, 0.273, 0.277, 0.256, 0.196, 0.158, 0.126, 0.091, 0.087, 0.086, 0.072, 0.062, 0.231, 0.196, 0.118, 0.071, 0.046, 0.039, 0.031, 0.016, 0.021, 0.023]; // build-time music RMS (30fps, normalized 0-1)
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const IN = "power3.out", OUT = "power2.in";
+      const bars = document.querySelectorAll("#bars i");
+
+      // per-frame driver: glow breathes with music RMS; meeting "speaking" bars are a deterministic UI indicator
+      const pr = { t: 0 };
+      tl.to(pr, { t: 24.9, duration: 24.9, ease: "none", onUpdate() {
+        const t = pr.t;
+        const r = RMS[Math.min(RMS.length - 1, Math.round(t * 30))] || 0;
+        gsap.set("#glow", { opacity: 0.35 + 0.35 * r, scale: 1 + 0.04 * r });
+        const talking = (t > 4.5 && t < 7.3) || (t > 7.64 && t < 10.4);
+        bars.forEach((b, i) => gsap.set(b, { scaleY: talking ? 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + i * 1.3)) : 0.15 }));
+      } }, 0);
+
+      // subtitle pair: appears in draft colors, then turns final (as the app does)
+      function pair(p, t, outAt) {
+        tl.fromTo(p, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.3, ease: IN, immediateRender: false }, t);
+        tl.to(p.querySelector(".src"), { color: "#bbbbbb", duration: 0.3 }, t + 0.9);
+        tl.to(p.querySelector(".tr"), { color: "#ffffff", duration: 0.3 }, t + 0.9);
+        if (outAt) tl.to(p, { opacity: 0, duration: 0.12 }, outAt);
+      }
+      gsap.set(".pair", { opacity: 0 });
+
+      // S1 hook (title on screen at frame 0)
+      tl.to("#q", { opacity: 0, y: -16, duration: 0.2, ease: OUT }, 2.35);
+      // beat-grid: answer lands at 2.40s
+      tl.fromTo("#ans", { opacity: 0, scale: 1.08 }, { opacity: 1, scale: 1, duration: 0.3, ease: IN }, 2.4);
+      tl.to("#ans", { opacity: 0, duration: 0.2, ease: OUT }, 3.6);
+
+      // S2 online meeting
+      tl.fromTo("#hdr2", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.4, ease: IN }, 3.9);
+      tl.fromTo("#call", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: IN }, 3.95);
+      tl.fromTo("#sub2", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: IN }, 4.2);
+      tl.to("#spk", { borderColor: "#5ee6c4", duration: 0.2 }, 4.5);
+      const p2 = document.querySelectorAll("#sub2 .pair");
+      pair(p2[0], 4.5, 7.5);
+      pair(p2[1], 7.64); // beat-grid: 7.64s
+      tl.to(["#hdr2", "#call", "#sub2"], { opacity: 0, duration: 0.25, ease: OUT }, 10.65);
+
+      // S3 conversation — beat-locked: 10.93s (strong cue)
+      tl.fromTo("#hdr3", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.4, ease: IN }, 10.95);
+      tl.fromTo(["#pA", "#pB"], { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.1, ease: IN }, 11.05);
+      tl.fromTo("#sub3", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: IN }, 11.25);
+      const p3 = document.querySelectorAll("#sub3 .pair");
+      tl.to("#pA .avatar", { borderColor: "#5ee6c4", duration: 0.2 }, 11.75);
+      pair(p3[0], 11.75, 14.38);
+      tl.to("#pA .avatar", { borderColor: "rgba(0,0,0,0)", duration: 0.2 }, 14.38);
+      tl.to("#pB .avatar", { borderColor: "#5ee6c4", duration: 0.2 }, 14.5);
+      pair(p3[1], 14.5);
+      tl.to(["#hdr3", "#pA", "#pB", "#sub3"], { opacity: 0, duration: 0.22, ease: OUT }, 17.2);
+
+      // S4 local — beat-locked: 17.47s (strong cue)
+      tl.fromTo("#icon", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.4, ease: IN }, 17.47);
+      tl.fromTo(".arc", { strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.5, stagger: 0.1, ease: "power2.out" }, 17.5);
+      tl.fromTo("#slash", { strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.3, ease: "power2.out" }, 18.08);
+      tl.fromTo("#h4", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: IN }, 18.45);
+      tl.fromTo("#chips4 .chip", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.35, ease: IN }, 19.3);
+      tl.to(["#icon", "#h4", "#chips4"], { opacity: 0, duration: 0.22, ease: OUT }, 21.55);
+
+      // S5 outro — beat-grid: 21.84s
+      tl.fromTo("#mark", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.5, ease: IN }, 21.88);
+      tl.fromTo("#tag5", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: IN }, 22.25);
+      tl.to(["#mark", "#tag5"], { opacity: 0, duration: 0.25, ease: OUT }, 24.65);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
